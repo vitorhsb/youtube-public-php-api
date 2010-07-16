@@ -1,7 +1,5 @@
 <?php
 
-require_once dirname(__FILE__)."/../../../settings/widgets/utils.php";
-
 /*
  * Youtube public API
  *
@@ -271,14 +269,12 @@ class Youtube {
         $path = self::$URL_MAP['users'].$this->options['user']."/"."uploads";
         
         $data = $this->requestData($path);
-        debugvariable("data", $data);
     }
 
     protected function _favorites(){
         $path = self::$URL_MAP['users'].$this->options['user']."/"."favorites";
 
         $data = $this->requestData($path);
-        debugvariable("data", $data);
     }
 
 
