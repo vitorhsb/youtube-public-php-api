@@ -45,8 +45,22 @@
 
     require_once dirname(__FILE__).'/youtube.lib.php';
 
-    $yt = new Youtube(array('limit' => 5));
-    $videos = $yt->getStandardFeed(array('feed' => 'most_viewed', 'time' => 'today'));
+    $yt = new Youtube(array('user' => 'google', 'limit' => 5));
+    
+    //$data = $yt->apiCall();
+    //$videos = $yt->getVideosFromData($data);
+
+    //$videos = $yt->getUserSubscriptions();
+
+    //$videos = $yt->getStandardFeed(array('limit' => 4, 'feed' => 'most_viewed', 'time' => 'this_month'));
+    
+    //$yt->setOptions(array("time"=>"this_month", 'limit' => 4));
+    //$videos = $yt->getStandardFeed("most_viewed");
+
+    $videos = $yt->searchForVideos( array('search' => 'seat race crash', 'limit' => 5) );
+    //$videos = $yt->searchForVideos( "seat race crash" );
+
+    //$video = $yt->getSingleVideo("dogM4Wu51tc");
 
     foreach ($videos as $i => $video) {
         $embed = $yt->getEmbedHTML($video); ?>
