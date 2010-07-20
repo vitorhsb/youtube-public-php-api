@@ -1,4 +1,5 @@
 <?php
+
 /*
  * Youtube public API
  *
@@ -10,7 +11,7 @@ class Youtube {
     /**
      * Version
      */
-    const VERSION = '0.1.1';
+    const VERSION = '0.1.2';
     const LAST_UPDATE = 'JULY 20, 2010';
 
     /**
@@ -34,7 +35,8 @@ class Youtube {
         'users'         => 'http://gdata.youtube.com/feeds/api/users/',
         'standardfeeds' => 'http://gdata.youtube.com/feeds/api/standardfeeds/',
         'playlists'     => 'http://gdata.youtube.com/feeds/api/playlists/',
-        'search'        => 'http://gdata.youtube.com/feeds/api/videos'
+        'search'        => 'http://gdata.youtube.com/feeds/api/videos',
+        'videos'        => 'http://gdata.youtube.com/feeds/api/videos/'
     );
     
     protected static $XMLNS_MAP = array(
@@ -47,7 +49,7 @@ class Youtube {
 
 
     protected static $AVAILABLE_TYPES = array(
-        'uploads', 'favorites', 'subscriptions', 'standardfeed', 'playlist', 'search'
+        'uploads', 'favorites', 'subscriptions', 'standardfeed', 'playlist', 'search', 'singlevideo'
     );
 
     protected static $AVAILABLE_STANDARD_FEEDS = array(
@@ -82,11 +84,12 @@ class Youtube {
         'limit'         => 5,
         'user'          => '',
         'search'        => '',
-        'standardfeed'  => '',
+        'feed'          => '',
         'playlist'      => '',
         'format'        => 'flash',
         'time'          => 'all_time',
-        'orderby'       => 'published'
+        'orderby'       => 'published',
+        'videoid'       => ''
     );
 
     /**
@@ -137,7 +140,7 @@ class Youtube {
     * @param Array $config the application configuration
     */
     public function __construct(/* polymorphic */) {
-
+        
         $args = func_get_args();
         if(!isset($args[0])){
             return $this;
@@ -203,8 +206,8 @@ class Youtube {
         return $this->options["search"];
     }
 
-    protected function _options_standardfeed($feed = null){
-        if(isset($feed) && $this->isValidStandardFeed($feed)){
+    protected function _options_feed($feed = null){
+        if(isset($feed) && $this->isValidFeed($feed)){
             $this->options["feed"] = $feed;
         }
         return $this->options["feed"];
@@ -238,6 +241,13 @@ class Youtube {
         return $this->options["orderby"];
     }
 
+    protected function _options_videoid($video_id = null){
+        if(isset($video_id) && $video_id != ""){
+            $this->options["videoid"] = $video_id;
+        }
+        return $this->options["videoid"];
+    }
+
     /**
      * Checks if the request type is valid
      *
@@ -253,7 +263,7 @@ class Youtube {
      *
      * @return Boolean
      */
-    protected function isValidStandardFeed($feed = null){
+    protected function isValidFeed($feed = null){
         $feed = isset($feed) ? $feed : $this->_options_standardfeed();
         return in_array($feed, self::$AVAILABLE_STANDARD_FEEDS);
     }
@@ -328,8 +338,22 @@ class Youtube {
         }
     }
 
+    public function getSingleVideo( $video_id ){
+        if(!isset($video_id) || $video_id == ""){
+            return null;
+        }
+
+        is_array($video_id) ? $this->setOptions($video_id) : $this->_options_videoid($video_id);
+        $this->_options_type("singlevideo");
+        
+        $data = $this->_singlevideo();
+        $videos = !is_null($data) && $data != '' ? $this->getVideosFromData($data) : array();
+        return count($videos) > 0 ? $videos[0] : null;
+    }
+
     public function getUserUploads( $options = array() ){
-        $this->setOptions($options);
+
+        is_array($options) ? $this->setOptions($options) : $this->_options_user($options);
         $this->_options_type("uploads");
         
         $data = $this->options['user'] != '' ? $this->_uploads() : null;
@@ -338,7 +362,7 @@ class Youtube {
     }
 
     public function getUserFavorites( $options = array() ){
-        $this->setOptions($options);
+        is_array($options) ? $this->setOptions($options) : $this->_options_user($options);
         $this->_options_type("favorites");
 
         $data = $this->options['user'] != '' ? $this->_favorites() : null;
@@ -347,7 +371,7 @@ class Youtube {
     }
 
     public function getUserSubscriptions( $options = array() ){
-        $this->setOptions($options);
+        is_array($options) ? $this->setOptions($options) : $this->_options_user($options);
         $this->_options_type("subscriptions");
 
         $videos = $this->options['user'] != '' ? $this->_subscriptions() : array();
@@ -355,16 +379,16 @@ class Youtube {
     }
 
     public function getStandardFeed( $options = array() ){
-        $this->setOptions($options);
+        is_array($options) ? $this->setOptions($options) : $this->_options_feed($options);
         $this->_options_type("standardfeed");
 
-        $data = $this->options['standardfeed'] != '' ? $this->_standardfeed() : null;
+        $data = $this->options['feed'] != '' ? $this->_standardfeed() : null;
         $videos = !is_null($data) && $data != '' ? $this->getVideosFromData($data) : array();
         return $videos;
     }
 
     public function searchForVideos( $options = array() ){
-        $this->setOptions($options);
+        is_array($options) ? $this->setOptions($options) : $this->_options_search($options);
         $this->_options_type("search");
 
         $data = $this->options['search'] != '' ? $this->_search() : null;
@@ -376,65 +400,76 @@ class Youtube {
     public function getVideosFromData($data){
         $videos = array();
         if(isset($data["feed"]["entry"])){
-
             foreach ($data["feed"]["entry"] as $i => $entry) {
-                $video = array(
-                    "title" => $entry["title"]['$t'],
-                    "link" => $entry["link"][0]["href"],
-                    "published" => $entry['published']['$t'],
-                    "author" => array(
-                        "name" => $entry['author'][0]['name']['$t'],
-                        "uri" => $entry['author'][0]['uri']['$t']
-                    ),
-                    "thumbnail" => array(
-                        "url" => $entry['media$group']['media$thumbnail'][0]["url"],
-                        "height" => $entry['media$group']['media$thumbnail'][0]["height"],
-                        "width" => $entry['media$group']['media$thumbnail'][0]["width"]
-                    )
-                );
-
-                if(isset($entry['media$group']['media$description'])){
-                    $video["description"] = $entry['media$group']['media$description']['$t'];
-                }
-
-                $videoFormats = array();
-                foreach($entry['media$group']['media$content'] as $i => $c){
-                    $videoFormats[ $c['yt$format'] ] = $c['url'];
-                }
-
-                switch ($this->options['format']) {
-                    case "mpeg": $video['video'] = $videoFormats[6]; break;
-                    case "flash": $video['video'] = $videoFormats[5]; break;
-                    default: $video['video'] = $videoFormats[1]; break;
-                }
-
-                if(isset($entry['media$group']['yt$duration'])){
-                    $video["length"] = $this->getFormatedDuration($entry['media$group']['yt$duration']['seconds']);
-                }
-                if(isset($entry['yt$statistics'])){
-                    $video['views'] = $entry['yt$statistics']['viewCount'];
-                }
-
+                $video = $this->getVideoInfo($entry);
                 $videos[] = $video;
             }
+        } elseif ( isset($data["entry"]) ){
+            $videos[] = $this->getVideoInfo($data["entry"]);
         }
+
         return $videos;
+    }
+
+    private function getVideoInfo($entry){
+        $video = array(
+            "title" => $entry["title"]['$t'],
+            "link" => $entry["link"][0]["href"],
+            "published" => $entry['published']['$t'],
+            "author" => array(
+                "name" => $entry['author'][0]['name']['$t'],
+                "uri" => $entry['author'][0]['uri']['$t']
+            ),
+            "thumbnail" => array(
+                "url" => $entry['media$group']['media$thumbnail'][0]["url"],
+                "height" => $entry['media$group']['media$thumbnail'][0]["height"],
+                "width" => $entry['media$group']['media$thumbnail'][0]["width"]
+            )
+        );
+
+        if(isset($entry['media$group']['media$description'])){
+            $video["description"] = $entry['media$group']['media$description']['$t'];
+        }
+
+        $videoFormats = array();
+        foreach($entry['media$group']['media$content'] as $i => $c){
+            $videoFormats[ $c['yt$format'] ] = $c['url'];
+        }
+
+        switch ($this->options['format']) {
+            case "mpeg": $video['video'] = $videoFormats[6]; break;
+            case "flash": $video['video'] = $videoFormats[5]; break;
+            default: $video['video'] = $videoFormats[1]; break;
+        }
+
+        if(isset($entry['media$group']['yt$duration'])){
+            $video["duration"] = $this->getFormatedDuration($entry['media$group']['yt$duration']['seconds']);
+        }
+        if(isset($entry['yt$statistics'])){
+            $video['views'] = $entry['yt$statistics']['viewCount'];
+        }
+        if(isset($entry['gd$rating'])){
+            $video['rating'] = $entry['gd$rating']['average'];
+        }
+        return $video;
     }
 
     public function getEmbedHTML($video, $embed_options = array()){
         $this->setEmbedOptions($embed_options);
         
         $html = "";
+        
         // A single video object
         if(is_array($video) && isset($video["video"])){
             $html = $this->_embedHTML($video);
         }
-        // An array of videos objects
+        // Array of videos
         elseif(is_array($video) && isset($video[0]["video"])) {
             foreach ($video as $i => $v) {
                 $html .= $this->_embedHTML($v);
             }
         }
+
         return $html;
     }
 
@@ -443,6 +478,12 @@ class Youtube {
      *
      *
      */
+    protected function _singlevideo(){
+        $path = self::$URL_MAP['videos'].$this->options['videoid'];
+        $data = $this->requestData($path);
+        return $data;
+    }
+
     protected function _uploads(){
         $path = self::$URL_MAP['users'].$this->options['user']."/"."uploads";
         $data = $this->requestData($path);
@@ -460,30 +501,34 @@ class Youtube {
         $data = $this->requestData($path);
         
         $videos = array();
-        foreach ($data["feed"]["entry"] as $i => $entry) {
-            
-            if(isset ($entry["content"]["src"]) ){
-                $src = $entry["content"]["src"];
-                preg_match("#users/(.*?)/#", $src, $s);
+        if(isset($data["feed"]["entry"])){
+            foreach ($data["feed"]["entry"] as $i => $entry) {
 
-                if(!is_null($s) && is_array($s) && isset($s[1])){
-                    $this->_options_user($s[1]);
-                    $d = $this->_uploads();
-                    $v = $this->getVideosFromData($d);
-                    $videos = array_merge($videos, $v);
+                if(isset ($entry["content"]["src"]) ){
+                    $src = $entry["content"]["src"];
+                    preg_match("#users/(.*?)/#", $src, $s);
+
+                    if(!is_null($s) && is_array($s) && isset($s[1])){
+                        $this->_options_user($s[1]);
+                        $d = $this->_uploads();
+                        $v = $this->getVideosFromData($d);
+                        $videos = array_merge($videos, $v);
+                    }
                 }
             }
+        } else {
+            return $videos;
         }
 
-        $videos = $this->sortVideosByPublishedTime($videos, $this->_options_limit());
+        return count($videos) == 0 ? $videos : $this->sortVideosByPublishedTime($videos, $this->_options_limit());
     }
 
     protected function _standardfeed(){
-        if($this->options['standardfeed'] == ""){
+        if($this->options['feed'] == ""){
             return array();
         }
 
-        $path = self::$URL_MAP['standardfeeds'].$this->options['standardfeed'];
+        $path = self::$URL_MAP['standardfeeds'].$this->options['feed'];
         $data = $this->requestData($path);
         return $data;
     }
@@ -562,25 +607,36 @@ class Youtube {
         $format = $this->_options_format();
         $format = $format == "mpeg" ? 6 : ($format == "h263" ? 1 : 5);
         $type = $this->options['type'];
-        
+
         $params = array(
             "alt" => self::$JSON_ALT_FLAG,
-            "time" => $this->_options_time()
+            "format" => $format,
+            "orderby" => $this->_options_orderby(),
+            "time" => $this->_options_time(),
+            "max-results" => $this->_options_limit()
         );
-
         $params = array_merge($params, self::$EXTRA_API_PARAMETERS);
-        
-        if($type != 'subscriptions'){
-            $params = array_merge($params, array(
-                "max-results" => $this->_options_limit(),
-                "format" => $format)
-            );
-        }
-        if($type != 'standardfeed'){
-            $params = array_merge($params, array( "orderby" => $this->_options_orderby() ) );
-        }
-        if($type == 'search'){
-            $params = array_merge($params, array( "q" => $this->options['search']));
+
+        switch ($type) {
+            case "singlevideo":
+                unset($params["max-results"]);
+                unset($params["orderby"]);
+                unset($params["time"]);
+                break;
+            case "subscriptions":
+                unset($params["max-results"]);
+                unset($params["format"]);
+                unset($params["orderby"]);
+                unset($params["time"]);
+                break;
+            case "standardfeed":
+                unset($params["orderby"]);
+                break;
+            case "search":
+                $params["q"] = $this->options["search"];
+                break;
+            default:
+                break;
         }
 
         return $params;
@@ -633,7 +689,7 @@ class Youtube {
         }
         $minutes = $hours > 0 && $minutes < 10 ? "0".$minutes : $minutes;
         //Seconds
-        $seconds = $duration < 10 ? : $duration;
+        $seconds = $duration < 10 ? "0".$duration : $duration;
         $length = $minutes.":".$seconds;
         if($hours>0){
             $hours = $hours < 10 ? "0".$hours : $hours;
@@ -649,7 +705,6 @@ class Youtube {
             $vs[ $ts ] = $v;
         }
         krsort($vs);
-
         $videos = array();
         $items = min(array($limit, count($vs)));
         foreach ($vs as $key => $v) {
@@ -657,10 +712,9 @@ class Youtube {
             $videos[] = $v;
             $items--;
         }
-
         return $videos;
     }
 
 }
 
-?> 
+?>
